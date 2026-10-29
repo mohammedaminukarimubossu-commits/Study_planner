@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Study Planner</title>
+<style>
+:root{--bg:#f3f6f4;--card:#fff;--ink:#17332b;--muted:#5c726a;--line:#d5e0db;--accent:#0f7a5c;--accent-ink:#fff;--warn:#b3261e;--done:#8aa39a;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){color-scheme:dark;--bg:#0f1a16;--card:#17261f;--ink:#e6f1ec;--muted:#98b0a6;--line:#27403435;--line:#2a4237;--accent:#3fbf97;--accent-ink:#06211a;--warn:#ff8a80;--done:#6b8478}}
+:root[data-theme="dark"]{color-scheme:dark;--bg:#0f1a16;--card:#17261f;--ink:#e6f1ec;--muted:#98b0a6;--line:#2a4237;--accent:#3fbf97;--accent-ink:#06211a;--warn:#ff8a80;--done:#6b8478}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.5 Georgia,"Iowan Old Style",serif}
+main{max-width:640px;margin:0 auto;padding:24px 16px 48px}
+h1{font-size:2rem;margin:0 0 4px;letter-spacing:-.01em}
+.sub{color:var(--muted);margin:0 0 20px;font-family:system-ui,sans-serif;font-size:.95rem}
+form{display:grid;gap:10px;background:var(--card);border:1px solid var(--line);border-radius:10px;padding:16px;font-family:system-ui,sans-serif}
+label{font-size:.85rem;font-weight:600;display:grid;gap:4px}
+input,select,button{font:inherit;color:inherit}
+input,select{padding:10px 12px;border:1px solid var(--line);border-radius:6px;background:var(--bg);width:100%}
+input:focus-visible,select:focus-visible,button:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+.row{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+@media(max-width:480px){.row{grid-template-columns:1fr}}
+.add{background:var(--accent);color:var(--accent-ink);border:0;border-radius:6px;padding:11px;font-weight:700;cursor:pointer}
+#error{color:var(--warn);font-size:.85rem;min-height:1.2em;margin:0}
+.bar{display:flex;justify-content:space-between;align-items:center;margin:22px 0 10px;font-family:system-ui,sans-serif;font-size:.9rem;color:var(--muted);gap:8px;flex-wrap:wrap}
+.filters{display:flex;gap:6px}
+.filters button{background:transparent;border:1px solid var(--line);border-radius:999px;padding:4px 12px;cursor:pointer;color:var(--muted)}
+.filters button[aria-pressed="true"]{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
+ul{list-style:none;margin:0;padding:0;display:grid;gap:8px}
+li{display:flex;align-items:center;gap:12px;background:var(--card);border:1px solid var(--line);border-left:5px solid var(--accent);border-radius:8px;padding:12px}
+li.p-High{border-left-color:var(--warn)}li.p-Low{border-left-color:var(--done)}
+li input[type=checkbox]{width:22px;height:22px;flex:none;accent-color:var(--accent)}
+.txt{flex:1;min-width:0}
+.title{font-weight:700;overflow-wrap:anywhere}
+.meta{font-family:system-ui,sans-serif;font-size:.8rem;color:var(--muted)}
+li.done .title{text-decoration:line-through;color:var(--done)}
+li.done{opacity:.8}
+.del{background:transparent;border:1px solid var(--line);color:var(--warn);border-radius:6px;padding:6px 10px;cursor:pointer;font-family:system-ui,sans-serif;font-size:.85rem}
+.empty{text-align:center;color:var(--muted);padding:28px 12px;border:2px dashed var(--line);border-radius:10px;font-family:system-ui,sans-serif}
+</style>
+</head>
+<body>
+<main>
+  <h1>Study Planner</h1>
+  <p class="sub">Add your study tasks, tick them off, and keep track of what is left.</p>
+
+  <form id="form" novalidate>
+    <label>Task title
+      <input id="title" maxlength="100" placeholder="e.g. Finish Chapter 3 exercises" autocomplete="off">
+    </label>
+    <div class="row">
+      <label>Subject or course
+        <input id="subject" maxlength="60" placeholder="e.g. Computer Science" autocomplete="off">
+      </label>
+      <label>Priority
+        <select id="priority"><option>High</option><option selected>Medium</option><option>Low</option></select>
+      </label>
+    </div>
+    <p id="error" role="alert"></p>
+    <button class="add" type="submit">Add task</button>
+  </form>
+
+  <div class="bar">
+    <span id="count"></span>
+    <div class="filters" role="group" aria-label="Filter tasks">
+      <button data-f="all" aria-pressed="true">All</button>
+      <button data-f="active" aria-pressed="false">To do</button>
+      <button data-f="done" aria-pressed="false">Completed</button>
+    </div>
+  </div>
+  <ul id="list"></ul>
+</main>
+
+<script>
+const KEY = "studyPlannerTasks";
+let tasks = [], filter = "all";
+
+function load() {
+  try { const r = JSON.parse(localStorage.getItem(KEY)); if (Array.isArray(r)) tasks = r; } catch (e) { tasks = []; }
+}
+function save() {
+  try { localStorage.setItem(KEY, JSON.stringify(tasks)); } catch (e) {}
+}
+
+const $ = id => document.getElementById(id);
+
+function render() {
+  const list = $("list");
+  list.innerHTML = "";
+  const shown = tasks.filter(t => filter === "all" || (filter === "done" ? t.done : !t.done));
+  const left = tasks.filter(t => !t.done).length;
+  $("count").textContent = tasks.length ? left + " of " + tasks.length + " tasks left" : "";
+
+  if (!shown.length) {
+    const d = document.createElement("li");
+    d.className = "empty";
+    d.style.display = "block";
+    d.textContent = !tasks.length
+      ? "No tasks yet. Add your first study task above."
+      : "No " + (filter === "done" ? "completed" : "unfinished") + " tasks to show.";
+    list.appendChild(d);
+    return;
+  }
+
+  shown.forEach(t => {
+    const li = document.createElement("li");
+    li.className = "p-" + t.priority + (t.done ? " done" : "");
+
+    const cb = document.createElement("input");
+    cb.type = "checkbox"; cb.checked = t.done;
+    cb.setAttribute("aria-label", "Mark \u201c" + t.title + "\u201d complete");
+    cb.addEventListener("change", () => { t.done = cb.checked; save(); render(); });
+
+    const box = document.createElement("div");
+    box.className = "txt";
+    const title = document.createElement("div");
+    title.className = "title"; title.textContent = t.title;
+    const meta = document.createElement("div");
+    meta.className = "meta";
+    meta.textContent = (t.subject || "No subject") + " \u2022 " + t.priority + " priority" + (t.done ? " \u2022 Completed" : "");
+    box.append(title, meta);
+
+    const del = document.createElement("button");
+    del.className = "del"; del.type = "button"; del.textContent = "Delete";
+    del.setAttribute("aria-label", "Delete \u201c" + t.title + "\u201d");
+    del.addEventListener("click", () => { tasks = tasks.filter(x => x.id !== t.id); save(); render(); });
+
+    li.append(cb, box, del);
+    list.appendChild(li);
+  });
+}
+
+$("form").addEventListener("submit", e => {
+  e.preventDefault();
+  const title = $("title").value.trim();
+  if (!title) {
+    $("error").textContent = "Please enter a task title.";
+    $("title").focus();
+    return;
+  }
+  $("error").textContent = "";
+  tasks.unshift({
+    id: Date.now() + Math.random(),
+    title, subject: $("subject").value.trim(),
+    priority: $("priority").value, done: false
+  });
+  save();
+  $("title").value = ""; $("subject").value = "";
+  $("title").focus();
+  render();
+});
+$("title").addEventListener("input", () => { $("error").textContent = ""; });
+
+document.querySelectorAll(".filters button").forEach(b => b.addEventListener("click", () => {
+  filter = b.dataset.f;
+  document.querySelectorAll(".filters button").forEach(x => x.setAttribute("aria-pressed", x === b));
+  render();
+}));
+
+load();
+render();
+</script>
+</body>
+</html>
